@@ -1,17 +1,24 @@
-from fastapi import FastAPI, UploadFile, File, Request
-from app.vespa_client import query_vespa
+from fastapi import FastAPI, UploadFile, File
+from app.retrieval import vespa_retriever
+from pydantic import BaseModel
 import shutil
 
 app = FastAPI()
 
 
+class QueryRequest(BaseModel):
+    query: str
+    top_k: int = 5
+
+
 @app.post("/api/query")
-async def query_rag(req: Request):
-    body = await req.json()
-    query = body.get("query", "")
-    print(query)
-    results = query_vespa(query)
-    return {"chunks": results}
+def query_docs(payload: QueryRequest):
+    docs = vespa_retriever.get_relevant_documents(payload.query)
+    return {
+        "documents": [
+            {"content": doc.page_content, "metadata": doc.metadata} for doc in docs
+        ]
+    }
 
 
 @app.post("/admin/upload-cert/")

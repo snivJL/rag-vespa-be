@@ -2,3 +2,6 @@ fastapi
 uvicorn
 pyvespa
 python-multipart
+langchain
+langchain-community
+pydantic
