@@ -1,6 +1,7 @@
 from vespa.application import Vespa
+import os
 
-vespa_app = Vespa(url="http://your-vespa-host:8080")  # use Railway ENV later
+vespa_app = Vespa(url=os.getenv("VESPA_HOST"))
 
 
 def query_vespa(query: str):
