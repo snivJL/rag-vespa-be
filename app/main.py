@@ -19,11 +19,3 @@ def query_docs(payload: QueryRequest):
             {"content": doc.page_content, "metadata": doc.metadata} for doc in docs
         ]
     }
-
-
-@app.post("/admin/upload-cert/")
-async def upload_cert(file: UploadFile = File(...)):
-    save_path = f"/app/certs/{file.filename}"
-    with open(save_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return {"filename": file.filename, "status": "uploaded"}
