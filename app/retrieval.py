@@ -7,66 +7,93 @@ from app.vespa_client import vespa_app
 
 
 class VespaHybridRetriever(BaseRetriever):
+    """
+    Hybrid Retriever using Vespa for semantic + exact matching.
+    """
+
     app: Vespa
-    index_name: str = "passage"
+    index_name: str = "doc"
     pages: int = 5
     ranking_profile: str = "hybrid"
     filters: Optional[Dict[str, str]] = None
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
+        # Build YQL filter clause
         filter_clause = ""
         if self.filters:
-            filter_parts = [
+            parts = [
                 f"{field} contains '{value}'" for field, value in self.filters.items()
             ]
-            filter_clause = " and ".join(filter_parts) + " and "
+            filter_clause = " and ".join(parts) + " and "
+
+        # Vespa YQL query
         yql = (
             f"select * from {self.index_name} where ("
-            f'{filter_clause}([{{"targetNumHits":{self.pages}}}]nearestNeighbor(embedding, q_embedding))'
-            ");"
+            f'{filter_clause}[{{"targetNumHits":{self.pages}}}]nearestNeighbor(chunk_embedding, query_embedding)'
+            ")"
         )
+
         response: VespaQueryResponse = self.app.query(
             yql=yql,
             query=query,
             hits=self.pages,
             ranking={self.ranking_profile},
             body={
-                "input.query(q_embedding)": f'embed(e5, "{query}")',
+                "input.query(query_embedding)": f'embed(e5, "{query}")',
             },
             timeout="2s",
         )
         if not response.is_successful():
             raise ValueError(
-                f"Query failed with status code {response.status_code}, url={response.url} response={response.json}"
+                f"Query failed with status code {response.status_code}, url={response.url}, response={response.json()}"
             )
         return self._parse_response(response)
 
     def _parse_response(self, response: VespaQueryResponse) -> List[Document]:
-        documents: List[Document] = []
+        docs: List[Document] = []
         for hit in response.hits:
-            fields = hit["fields"]
+            f = hit["fields"]
+            # Extract core fields according to updated schema
             metadata = {
-                "id": fields.get("id"),
-                "doc_id": fields.get("doc_id"),
-                "doc_type": fields.get("doc_type"),
-                "file_name": fields.get("file_name"),
-                "source_url": fields.get("source_url"),
-                "title": fields.get("title"),
-                "author": fields.get("author"),
-                "created_at": fields.get("created_at"),
-                "modified_at": fields.get("modified_at"),
-                "page_number": fields.get("page_number"),
-                "sheet_name": fields.get("sheet_name"),
-                # Add more fields if needed
+                "id": f.get("id"),
+                "doc_id": f.get("doc_id"),
+                "doc_type": f.get("doc_type"),
+                "file_type": f.get("file_type"),
+                "chunk_count": f.get("chunk_count"),
+                # existing fields
+                "file_name": f.get("file_name"),
+                "source_url": f.get("source_url"),
+                "title": f.get("title"),
+                "author": f.get("author"),
+                "created_timestamp": f.get("created_timestamp"),
+                "modified_timestamp": f.get("modified_timestamp"),
+                # pagination
+                "page": f.get("page"),
+                "chunk_id": f.get("chunk_id"),
+                "section_title": f.get("section_title"),
+                # security/access
+                "visibility": f.get("visibility"),
+                "allowed_users": f.get("allowed_users"),
+                "allowed_groups": f.get("allowed_groups"),
+                "owner": f.get("owner"),
+                # excel metadata
+                "sheet_name": f.get("sheet_name"),
+                "row_number": f.get("row_number"),
+                "column_letter": f.get("column_letter"),
+                "cell_range": f.get("cell_range"),
+                # business metadata
+                "company": f.get("company"),
+                "industry": f.get("industry"),
+                "year": f.get("year"),
             }
-            documents.append(
+            docs.append(
                 Document(
-                    page_content=fields["text"],
+                    page_content=f.get("chunk_text"),
                     metadata=metadata,
                 )
             )
-        return documents
+        return docs
 
 
-# Usage:
-vespa_retriever = VespaHybridRetriever(app=vespa_app, index_name="passage", pages=5)
+# Usage example:
+vespa_retriever = VespaHybridRetriever(app=vespa_app, index_name="doc", pages=5)
